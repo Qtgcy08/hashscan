@@ -5,3 +5,8 @@ result.json
 result.yaml
 result.md
 result.xlsx
+
+hashscan.exe.lnk
+
+hashscan.dist/
+hashscan.build/
