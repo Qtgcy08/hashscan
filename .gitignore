@@ -1,0 +1,7 @@
+<GITIGNORE>
+# 忽略特定结果文件
+result.txt
+result.json
+result.yaml
+result.md
+result.xlsx
