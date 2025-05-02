@@ -1,126 +1,92 @@
-# HashScan - 智能文件哈希扫描工具
+# 核鉴HashScan - 文件哈希计算工具
 
 ![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)
 ![License](https://img.shields.io/badge/License-LGPLv3-green.svg)
 
-HashScan 是一个功能强大的文件哈希扫描工具，支持多种哈希算法、多线程处理和动态资源管理，能够高效地扫描文件系统并计算文件哈希值。
+> **核验如鉴，明察秋毫**  
+> **核鉴**一名，典出《宋史·职官志》："核验文牍，鉴察秋毫"。
+一个简单实用的文件哈希计算工具，支持多线程处理和多种输出格式。
 
 ## 功能特点
 
-- **多算法支持**：支持所有 Python hashlib 提供的哈希算法 (MD5, SHA1, SHA256 等)
-- **智能队列管理**：动态调整队列大小，根据系统负载优化性能
-- **多线程处理**：充分利用多核CPU，提高扫描速度
-- **多种输出格式**：支持文本、JSON、YAML、Markdown 和 Excel 格式
-- **重复文件检测**：可识别并报告具有相同哈希值的文件
-- **实时监控**：显示扫描进度和线程状态
-- **交互式控制**：支持暂停、继续和终止扫描操作
+- **多算法支持**：支持全系列 Python hashlib 哈希算法，支持国密SM3
+- **快速扫描**：多线程处理，自动优化队列大小
+- **实用功能**：查找重复文件、支持递归扫描
+- **多种输出**：文本、JSON、Excel等格式
 
-## 安装使用
-
-### 环境要求
-
-- Python 3.7 或更高版本
-- 使用 Rich 库以获得更好的终端显示效果
+## 快速开始
 
 ### 安装依赖
-
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 基本使用
-
+扫描当前目录：
 ```bash
-python hash_scanner.py -f /path/to/folder
+python hashscan.py
 ```
 
-### 命令行选项
-
-```
-usage: hash_scanner.py [-h] [-f FOLDER] [-a ALGO [ALGO ...]] [-r] [-t THREADS]
-                       [-s] [-o OUTPUT] [--format {text,json,yaml,markdown,xlsx}]
-
-智能文件哈希扫描工具
-
-可选参数:
-  -h, --help            显示帮助信息并退出
-  -f FOLDER, --folder FOLDER
-                        要扫描的目标文件夹路径 (默认: 当前目录)
-  -a ALGO [ALGO ...], --algorithms ALGO [ALGO ...]
-                        要使用的哈希算法 (默认: md5)
-  -r, --recursive       递归扫描子目录
-  -t THREADS, --threads THREADS
-                        使用的线程数 (默认: CPU核心数)
-  -s, --same           仅显示重复文件
-  -o OUTPUT, --output OUTPUT
-                        将结果输出到指定文件
-  --format {text,json,yaml,markdown,xlsx}
-                        输出格式 (默认: text)
-
-支持的哈希算法: blake2b, blake2s, md5, sha1, sha224, sha256, sha384, sha3_224, sha3_256, sha3_384, sha3_512, sha512, shake_128, shake_256
+递归扫描指定目录：
+```bash
+python hashscan.py -f /path/to/folder -r
 ```
 
-### 使用示例
+## 使用示例
 
-1. **基本扫描** (使用MD5算法扫描当前目录):
+1. **计算文件哈希值**：
    ```bash
-   python hash_scanner.py
+   python hashscan.py -f ~/Documents -a sha256
    ```
 
-2. **递归扫描** (使用多种算法扫描目录及其子目录):
+2. **查找重复文件**：
    ```bash
-   python hash_scanner.py -f /path/to/folder -a md5 sha1 sha256 -r
+   python hashscan.py -f /downloads -s
    ```
 
-3. **查找重复文件**:
+3. **生成Excel报告**：
    ```bash
-   python hash_scanner.py -f /path/to/folder -s
+   python hashscan.py -f /photos --format xlsx -o report.xlsx
    ```
 
-4. **生成Excel报告**:
-   ```bash
-   python hash_scanner.py -f /path/to/folder --format xlsx -o report.xlsx
-   ```
+## 交互控制
 
-5. **拖放文件夹扫描**:
-   直接将文件夹拖放到脚本文件上运行
+扫描过程中可以输入命令：
+- `p` 暂停扫描
+- `c` 继续扫描
+- `q` 退出程序
 
-## 交互命令
+## 参数说明
 
-在扫描过程中，可以输入以下命令控制程序:
+```
+基本参数：
+  -f, --folder      扫描目录(默认当前目录)
+  -a, --algorithms  哈希算法(默认md5)
+  -r, --recursive   递归扫描子目录
 
-- `p` - 暂停扫描
-- `c` - 继续扫描
-- `q` - 终止扫描
+性能控制：
+  -t, --threads     线程数(默认CPU核心数)
 
-## 输出格式
+输出选项：
+  -o, --output      输出文件
+  --format          输出格式(text/json/yaml/markdown/xlsx)
+  -s, --same        仅显示重复文件
+```
 
-HashScan 支持多种输出格式:
+## 技术亮点
 
-1. **文本格式** (默认): 适合直接在终端查看
-2. **JSON格式**: 适合程序处理
-3. **YAML格式**: 适合配置文件
-4. **Markdown格式**: 适合文档记录
-5. **Excel格式**: 适合数据分析 (需要指定输出文件)
+1. **动态队列调整**：根据系统负载自动调整队列大小
+2. **实时进度显示**：显示CPU/内存使用率和处理进度
+3. **线程状态监控**：实时查看各线程处理状态
+4. **错误处理机制**：记录并显示处理失败的文件
 
-## 性能优化
+## 常见问题
 
-- **动态队列调整**: 根据系统负载自动调整队列大小
-- **内存视图优化**: 使用内存视图提高哈希计算效率
-- **批量处理**: 分块读取文件减少IO操作
+**Q**: 如何处理大文件？
+**A**: 工具采用分块读取方式，内存占用低，适合处理大文件。
 
-## 错误处理
+**Q**: 为什么扫描速度慢？
+**A**: 可以尝试增加线程数(-t参数)或减少同时使用的哈希算法数量。
 
-程序会记录并显示扫描过程中的错误，包括:
-
-- 无权限访问的文件
-- 不存在的文件
-- 其他IO错误
-
-## 许可证
-
-本项目使用 LGPLv3 许可证 - 详情请参阅 LICENSE 文件
-
-## 贡献
-
-欢迎提交问题和拉取请求改进本项目
+**Q**: 如何验证文件完整性？
+**A**: 生成哈希报告后，可以定期重新扫描并与原始报告对比。
