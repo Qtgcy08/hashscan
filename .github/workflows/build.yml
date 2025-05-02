@@ -1,0 +1,105 @@
+name: ActionBuild
+
+on:
+  push:
+    tags: ["V*"]  # 改为大写 V 开头的标签
+  workflow_dispatch:
+
+env:
+  VERSION: ${GITHUB_REF_NAME#V}  # 提取标签版本号（去掉V前缀）
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        arch: [x64, arm64]  # 增加架构维度
+        python-version: ["3.10"]
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        pip install nuitka
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Setup Compilers
+      run: |
+        case "$RUNNER_OS" in
+          "Windows")
+            # Windows: 安装MinGW-w64 (x64/arm64)
+            choco install mingw --params="/InstallDir:C:\mingw /Architecture:${{ matrix.arch }}" -y
+            echo "C:\mingw\bin" >> $GITHUB_PATH
+            ;;
+          "Linux")
+            # Linux: 安装多架构GCC
+            sudo apt-get update
+            if [ "${{ matrix.arch }}" == "arm64" ]; then
+              sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+            else
+              sudo apt-get install -y gcc g++
+            fi
+            ;;
+          "macOS")
+            # macOS: 确保Xcode命令行工具
+            xcode-select --install || true
+            ;;
+        esac
+
+    - name: Build with Nuitka
+      run: |
+        OUTPUT_NAME="hashscan_${VERSION}_${RUNNER_OS}_${{ matrix.arch }}"
+        FLAGS="--standalone --lto=yes --jobs=8 --show-progress --show-modules --show-scons"
+
+        case "$RUNNER_OS" in
+          "Windows")
+            EXT=".exe"
+            CC_FLAGS="--mingw64 --windows-disable-console"
+            ;;
+          *)
+            EXT=""
+            CC_FLAGS=""
+            ;;
+        esac
+
+        # 架构特定参数
+        if [ "${{ matrix.arch }}" == "arm64" ]; then
+          case "$RUNNER_OS" in
+            "Linux")   CC_FLAGS+=" --target-arch=arm64" ;;
+            "macOS")   CC_FLAGS+=" --target-arch=arm64" ;;
+            "Windows") CC_FLAGS+=" --msys=clangarm64" ;;  # Windows ARM需特殊处理
+          esac
+        fi
+
+        python -m nuitka $FLAGS $CC_FLAGS \
+          --output-filename=$OUTPUT_NAME \
+          --output-dir=dist \
+          ./hashscan.py
+
+        # 重命名输出文件
+        mv dist/hashscan$EXT dist/$OUTPUT_NAME$EXT
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ActionBuild-${{ env.VERSION }}
+        name: "HashScan ${{ env.VERSION }}"
+        body: |
+          ### 编译信息
+          - 平台: ${{ matrix.os }} (${{ matrix.arch }})
+          - 编译器: ${{ runner.os == 'Windows' && 'MinGW64' || runner.os == 'macOS' && 'Clang' || 'GCC' }}
+          - Nuitka参数: `--standalone --lto=yes --jobs=8`
+          - 构建时间: ${{ steps.date.outputs.current_date }}
+        files: |
+          dist/hashscan_${{ env.VERSION }}_${{ matrix.os }}_${{ matrix.arch }}*

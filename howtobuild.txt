@@ -1,1 +1,1 @@
- python -m nuitka --standalone --lto=yes --jobs=8 --mingw64 --show-progress --show-modules --show-scons ./hashscan.py
+python -m nuitka --standalone --lto=yes --jobs=8 --mingw64 --show-progress --show-modules --show-scons ./hashscan.py
