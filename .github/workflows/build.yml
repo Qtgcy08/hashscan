@@ -1,105 +1,127 @@
 name: ActionBuild
 
 on:
-  push:
-    tags: ["V*"]  # 改为大写 V 开头的标签
-  workflow_dispatch:
-
-env:
-  VERSION: ${GITHUB_REF_NAME#V}  # 提取标签版本号（去掉V前缀）
+    push:
+      tags: ["V*"]  # 改为大写 V 开头的标签
+    workflow_dispatch:
 
 jobs:
   build:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
-        arch: [x64, arm64]  # 增加架构维度
-        python-version: ["3.10"]
-      fail-fast: false
-
-    runs-on: ${{ matrix.os }}
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        arch: [x64, arm64]
+        exclude:
+          - os: windows-latest
+            arch: arm64  # Windows ARM64需要额外配置
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v3
+
+    - name: Extract Version
+      shell: bash
+      run: |
+        # 提取纯版本号（去掉V前缀）
+        echo "VERSION=${GITHUB_REF_NAME#V}" >> $GITHUB_ENV
+        echo "FULL_VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+    - name: Extract Version
+      shell: bash
+      run: |
+        # 提取纯版本号（去掉V前缀）
+        echo "VERSION=${GITHUB_REF_NAME#V}" >> $GITHUB_ENV
+        echo "FULL_VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.10'
 
-    - name: Install dependencies
+    # 平台无关的依赖安装
+    - name: Install base dependencies
+      shell: bash
       run: |
-        pip install nuitka
-        python -c "from pathlib import Path; import sys, subprocess; sys.exit(0) if not Path('requirements.txt').exists() else subprocess.run(['pip', 'install', '-r', 'requirements.txt'], check=True)"
+        pip install nuitka -U
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Setup Compilers
+    # Windows专属配置
+    - name: Windows Setup (MinGW)
+      if: matrix.os == 'windows-latest'
+      shell: cmd
       run: |
-        case "$RUNNER_OS" in
-          "Windows")
-            # Windows: 安装MinGW-w64 (x64/arm64)
-            choco install mingw --params="/InstallDir:C:\mingw /Architecture:${{ matrix.arch }}" -y
-            echo "C:\mingw\bin" >> $GITHUB_PATH
-            ;;
-          "Linux")
-            # Linux: 安装多架构GCC
-            sudo apt-get update
-            if [ "${{ matrix.arch }}" == "arm64" ]; then
-              sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-            else
-              sudo apt-get install -y gcc g++
-            fi
-            ;;
-          "macOS")
-            # macOS: 确保Xcode命令行工具
-            xcode-select --install || true
-            ;;
-        esac
+        choco install mingw -y --params="/InstallDir:C:\mingw /Architecture:x64"
+        echo C:\mingw\bin >> "%GITHUB_PATH%"
 
-    - name: Build with Nuitka
+    # Linux专属配置
+    - name: Linux Setup (GCC)
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
       run: |
-        OUTPUT_NAME="hashscan_${VERSION}_${RUNNER_OS}_${{ matrix.arch }}"
-        FLAGS="--standalone --lto=yes --jobs=8 --show-progress --show-modules --show-scons"
-
-        case "$RUNNER_OS" in
-          "Windows")
-            EXT=".exe"
-            CC_FLAGS="--mingw64 --windows-disable-console"
-            ;;
-          *)
-            EXT=""
-            CC_FLAGS=""
-            ;;
-        esac
-
-        # 架构特定参数
+        sudo apt-get update
         if [ "${{ matrix.arch }}" == "arm64" ]; then
-          case "$RUNNER_OS" in
-            "Linux")   CC_FLAGS+=" --target-arch=arm64" ;;
-            "macOS")   CC_FLAGS+=" --target-arch=arm64" ;;
-            "Windows") CC_FLAGS+=" --msys=clangarm64" ;;  # Windows ARM需特殊处理
-          esac
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        else
+          sudo apt-get install -y gcc g++
         fi
 
-        python -m nuitka $FLAGS $CC_FLAGS \
-          --output-filename=$OUTPUT_NAME \
-          --output-dir=dist \
-          ./hashscan.py
+    # macOS专属配置
+    - name: macOS Setup (Xcode)
+      if: matrix.os == 'macos-latest'
+      shell: bash
+      run: |
+        xcode-select --install || true
 
-        # 重命名输出文件
-        mv dist/hashscan$EXT dist/$OUTPUT_NAME$EXT
+    # 统一构建命令（自动适应平台）
+    - name: Build with Nuitka
+      shell: bash
+      run: |
+        OUTPUT_NAME="hashscan_${GITHUB_REF_NAME#v}_${RUNNER_OS}_${{ matrix.arch }}"
+        
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          python -m nuitka ^
+            --standalone ^
+            --lto=yes ^
+            --jobs=8 ^
+            --mingw64 ^
+            --disable-ccache ^
+            --windows-icon-from-ico=assets/icon.ico ^
+            --output-filename="$OUTPUT_NAME" ^
+            --output-dir=dist ^
+            hashscan.py
+        else
+          python -m nuitka \
+            --standalone \
+            --lto=yes \
+            --jobs=8 \
+            --disable-ccache \
+            --output-filename="$OUTPUT_NAME" \
+            --output-dir=dist \
+            hashscan.py
+        fi
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: hashscan-${{ runner.os }}-${{ matrix.arch }}
+        path: dist/*
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ActionBuild-${{ env.VERSION }}
-        name: "HashScan ${{ env.VERSION }}"
+        name: ${{ env.FULL_VERSION }} Release
+        tag_name: ${{ github.ref }}
         body: |
           ### 编译信息
-          - 平台: ${{ matrix.os }} (${{ matrix.arch }})
-          - 编译器: ${{ runner.os == 'Windows' && 'MinGW64' || runner.os == 'macOS' && 'Clang' || 'GCC' }}
-          - Nuitka参数: `--standalone --lto=yes --jobs=8`
-          - 构建时间: ${{ steps.date.outputs.current_date }}
+          - **版本**: ${{ env.FULL_VERSION }}
+          - **构建系统**: ${{ runner.os }} (${{ matrix.arch }})
+          - **构建时间**: ${{ steps.date.outputs.date }}
+          - **Nuitka版本**: $(python -m nuitka --version)
+          
+          ### 下载说明
+          文件名格式: `hashscan_${FULL_VERSION}_<系统>_<架构>`
         files: |
-          dist/hashscan_${{ env.VERSION }}_${{ matrix.os }}_${{ matrix.arch }}*
+          dist/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
