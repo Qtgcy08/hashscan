@@ -31,7 +31,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install nuitka
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        python -c "from pathlib import Path; import sys, subprocess; sys.exit(0) if not Path('requirements.txt').exists() else subprocess.run(['pip', 'install', '-r', 'requirements.txt'], check=True)"
 
     - name: Setup Compilers
       run: |
