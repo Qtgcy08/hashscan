@@ -2,72 +2,48 @@ name: ActionBuild
 
 on:
   push:
-    tags: ["V*"]  # 大写 V 开头的标签
+    tags: ["V*"]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        arch: [x64, arm64]
+        arch: [x64]
         exclude:
           - os: windows-latest
-            arch: arm64  # Windows ARM64需要额外配置
+            arch: arm64
 
     steps:
     - uses: actions/checkout@v3
 
-    - name: Get Build Date
-      id: date
-      run: echo "date=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
-
     - name: Extract Version
       shell: bash
       run: |
-        # 提取版本号（统一处理大小写）
-        echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-        echo "VERSION=${VERSION#V}" >> $GITHUB_ENV
-        echo "FULL_VERSION=V${VERSION}" >> $GITHUB_ENV
+        TAG_VERSION=${GITHUB_REF_NAME#v}
+        TAG_VERSION=${TAG_VERSION#V}
+        echo "VERSION=${TAG_VERSION}" >> $GITHUB_ENV
+        echo "FULL_VERSION=V${TAG_VERSION}" >> $GITHUB_ENV
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    - name: Install base dependencies
-      shell: bash
+    - name: Install dependencies
       run: |
-        pip install nuitka -U
+        pip install nuitka==2.7 -U
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    # Windows专属配置
-    - name: Windows Setup (MinGW)
+    - name: Windows Setup
       if: matrix.os == 'windows-latest'
       shell: cmd
       run: |
         choco install mingw -y --params="/InstallDir:C:\mingw /Architecture:x64"
         echo C:\mingw\bin >> "%GITHUB_PATH%"
-
-    # Linux专属配置
-    - name: Linux Setup (GCC)
-      if: matrix.os == 'ubuntu-latest'
-      shell: bash
-      run: |
-        sudo apt-get update
-        if [ "${{ matrix.arch }}" == "arm64" ]; then
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-        else
-          sudo apt-get install -y gcc g++
-        fi
-
-    # macOS专属配置
-    - name: macOS Setup (Xcode)
-      if: matrix.os == 'macos-latest'
-      shell: bash
-      run: |
-        xcode-select --install || true
 
     - name: Build with Nuitka
       shell: bash
@@ -75,21 +51,12 @@ jobs:
         OUTPUT_NAME="hashscan_${FULL_VERSION}_${RUNNER_OS}_${{ matrix.arch }}"
         
         if [[ "$RUNNER_OS" == "Windows" ]]; then
-          python -m nuitka ^
-            --standalone ^
-            --lto=yes ^
-            --jobs=8 ^
-            --mingw64 ^
-            --disable-ccache ^
-            --windows-icon-from-ico=assets/icon.ico ^
-            --output-filename="$OUTPUT_NAME" ^
-            --output-dir=dist ^
-            hashscan.py
+          python -m nuitka --standalone --lto=yes --jobs=4 --mingw64 --disable-ccache --windows-icon-from-ico=assets/icon.ico --output-filename="$OUTPUT_NAME" --output-dir=dist hashscan.py
         else
           python -m nuitka \
             --standalone \
             --lto=yes \
-            --jobs=8 \
+            --jobs=4 \
             --disable-ccache \
             --output-filename="$OUTPUT_NAME" \
             --output-dir=dist \
@@ -97,10 +64,11 @@ jobs:
         fi
 
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v4  # 升级到 v4 解决下载问题
+      uses: actions/upload-artifact@v4
       with:
         name: hashscan-${{ runner.os }}-${{ matrix.arch }}
         path: dist/*
+
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
